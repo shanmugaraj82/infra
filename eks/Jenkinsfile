@@ -16,8 +16,7 @@ pipeline {
 
   environment {
     AWS_REGION = "${params.AWS_REGION}"
-    TF_VERSION = "1.8.5"   // you can update this anytime
-    TF_BIN     = "/usr/local/bin/terraform"
+    TF_VERSION = "1.8.5"   // change here if you want another version
   }
 
   stages {
@@ -25,22 +24,29 @@ pipeline {
     stage('Install Terraform If Missing') {
       steps {
         sh '''
+          set -e
+
           echo "Checking if Terraform is already installed..."
           if command -v terraform >/dev/null 2>&1; then
-            echo "Terraform already installed: $(terraform version)"
+            echo "Terraform already installed: $(terraform version | head -n 1)"
           else
-            echo "Terraform not found. Installing Terraform ${TF_VERSION} ..."
-            
-            # Download the Terraform zip
+            echo "Terraform not found. Installing Terraform ${TF_VERSION} locally in workspace..."
+
+            # Directory to hold terraform binary in this job's workspace
+            TF_DIR="${WORKSPACE}/.terraform-bin"
+            mkdir -p "${TF_DIR}"
+
+            # Download Terraform
             curl -fsSL -o terraform.zip \
-              https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-            
-            # Unzip and move to /usr/local/bin
-            unzip terraform.zip
-            sudo mv terraform ${TF_BIN}
-            sudo chmod +x ${TF_BIN}
-            
-            echo "Terraform installed successfully: $(terraform version)"
+              "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+
+            unzip -o terraform.zip
+            mv terraform "${TF_DIR}/terraform"
+            chmod +x "${TF_DIR}/terraform"
+            rm -f terraform.zip
+
+            echo "Terraform installed at ${TF_DIR}/terraform"
+            "${TF_DIR}/terraform" version
           fi
         '''
       }
@@ -55,7 +61,12 @@ pipeline {
     stage('Terraform Init') {
       steps {
         sh '''
+          set -e
+          # Ensure our local terraform bin is in PATH for this step
+          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+
           cd terraform
+          terraform version
           terraform init -input=false
         '''
       }
@@ -64,6 +75,9 @@ pipeline {
     stage('Terraform Plan') {
       steps {
         sh '''
+          set -e
+          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+
           cd terraform
           terraform plan -input=false \
             -var "cluster_name=${EKS_CLUSTER_NAME}" \
@@ -75,6 +89,9 @@ pipeline {
     stage('Terraform Apply') {
       steps {
         sh '''
+          set -e
+          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+
           cd terraform
           terraform apply -input=false -auto-approve \
             -var "cluster_name=${EKS_CLUSTER_NAME}" \
@@ -86,6 +103,9 @@ pipeline {
     stage('Show EKS ALB URL') {
       steps {
         sh '''
+          set -e
+          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+
           cd terraform
           echo "==============================="
           echo "       EKS ALB URL"
