@@ -34,17 +34,19 @@ module "vpc" {
 ######################
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "21.10.1" # latest module version as of Nov 2025 :contentReference[oaicite:5]{index=5}
+  version = "~> 21.0"
 
-  cluster_name    = var.cluster_name
-  cluster_version = var.cluster_version
+  # v21.x uses these names:
+  name               = var.cluster_name
+  kubernetes_version = var.cluster_version
+
+  # public API endpoint
+  endpoint_public_access = true
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
   enable_irsa = true
-
-  cluster_endpoint_public_access = true
 
   eks_managed_node_groups = {
     default = {
@@ -55,6 +57,12 @@ module "eks" {
       instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
     }
+  }
+
+  tags = {
+    Environment = "dev"
+    Terraform   = "true"
+    Project     = "eks-diabetic-app"
   }
 }
 
