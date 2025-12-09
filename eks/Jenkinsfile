@@ -15,8 +15,10 @@ pipeline {
   }
 
   environment {
-    AWS_REGION = "${params.AWS_REGION}"
-    TF_VERSION = "1.8.5"   // change here if you want another version
+    AWS_REGION   = "${params.AWS_REGION}"
+    TF_VERSION   = "1.8.5"             // terraform version
+    TF_WORKDIR   = "terraform"         // change if your tf files are in another folder
+    TF_LOCAL_BIN = ".terraform-bin"    // inside workspace
   }
 
   stages {
@@ -32,11 +34,10 @@ pipeline {
           else
             echo "Terraform not found. Installing Terraform ${TF_VERSION} locally in workspace..."
 
-            # Directory to hold terraform binary in this job's workspace
-            TF_DIR="${WORKSPACE}/.terraform-bin"
+            TF_DIR="${WORKSPACE}/${TF_LOCAL_BIN}"
             mkdir -p "${TF_DIR}"
 
-            # Download Terraform
+            echo "Downloading Terraform ${TF_VERSION}..."
             curl -fsSL -o terraform.zip \
               "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
 
@@ -62,10 +63,18 @@ pipeline {
       steps {
         sh '''
           set -e
-          # Ensure our local terraform bin is in PATH for this step
-          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
 
-          cd terraform
+          # Decide working directory: prefer TF_WORKDIR if it exists, else workspace root
+          WORKDIR="${TF_WORKDIR}"
+          if [ ! -d "${WORKDIR}" ]; then
+            echo "Directory '${WORKDIR}' not found. Using workspace root instead."
+            WORKDIR="."
+          fi
+
+          echo "Using Terraform working directory: ${WORKDIR}"
+          cd "${WORKDIR}"
+
           terraform version
           terraform init -input=false
         '''
@@ -76,9 +85,17 @@ pipeline {
       steps {
         sh '''
           set -e
-          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
 
-          cd terraform
+          WORKDIR="${TF_WORKDIR}"
+          if [ ! -d "${WORKDIR}" ]; then
+            echo "Directory '${WORKDIR}' not found. Using workspace root instead."
+            WORKDIR="."
+          fi
+
+          echo "Using Terraform working directory: ${WORKDIR}"
+          cd "${WORKDIR}"
+
           terraform plan -input=false \
             -var "cluster_name=${EKS_CLUSTER_NAME}" \
             -var "region=${AWS_REGION}"
@@ -90,9 +107,17 @@ pipeline {
       steps {
         sh '''
           set -e
-          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
 
-          cd terraform
+          WORKDIR="${TF_WORKDIR}"
+          if [ ! -d "${WORKDIR}" ]; then
+            echo "Directory '${WORKDIR}' not found. Using workspace root instead."
+            WORKDIR="."
+          fi
+
+          echo "Using Terraform working directory: ${WORKDIR}"
+          cd "${WORKDIR}"
+
           terraform apply -input=false -auto-approve \
             -var "cluster_name=${EKS_CLUSTER_NAME}" \
             -var "region=${AWS_REGION}"
@@ -104,9 +129,17 @@ pipeline {
       steps {
         sh '''
           set -e
-          export PATH="${WORKSPACE}/.terraform-bin:$PATH"
+          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
 
-          cd terraform
+          WORKDIR="${TF_WORKDIR}"
+          if [ ! -d "${WORKDIR}" ]; then
+            echo "Directory '${WORKDIR}' not found. Using workspace root instead."
+            WORKDIR="."
+          fi
+
+          echo "Using Terraform working directory: ${WORKDIR}"
+          cd "${WORKDIR}"
+
           echo "==============================="
           echo "       EKS ALB URL"
           echo "==============================="
