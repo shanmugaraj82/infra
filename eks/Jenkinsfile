@@ -1,5 +1,8 @@
 pipeline {
   agent any
+  options {
+            skipDefaultCheckout(true) // Prevents default SCM checkout
+        }
 
   parameters {
     string(
@@ -26,6 +29,7 @@ pipeline {
 
     stage('Checkout') {
       steps {
+        cleanWs() // Cleans the workspace
         checkout scm
       }
     }
