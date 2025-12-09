@@ -4,7 +4,7 @@ pipeline {
   parameters {
     string(
       name: 'EKS_CLUSTER_NAME',
-      defaultValue: 'diabetic-app-eks',
+      defaultValue: 'demo-eks',
       description: 'EKS cluster name'
     )
     string(
@@ -15,10 +15,11 @@ pipeline {
   }
 
   environment {
-    AWS_REGION   = "${params.AWS_REGION}"
-    TF_VERSION   = "1.8.5"
-    TF_LOCAL_BIN = ".terraform-bin"
-    TF_WORKDIR   = "eks/terraform"   // <-- Option A: .tf files are in ./terraform
+    AWS_REGION    = "${params.AWS_REGION}"
+    TF_VERSION    = "1.8.5"
+    TF_LOCAL_BIN  = ".terraform-bin"
+    TF_WORKDIR    = "eks/terraform"   // <- your .tf files live here
+    AWS_CREDS_ID  = "aws-jenkins-creds" // <- Jenkins credentials ID
   }
 
   stages {
@@ -37,15 +38,14 @@ pipeline {
           echo "== Top-level =="
           ls -la
 
-          echo "== terraform/ directory =="
+          echo "== eks/terraform directory =="
           if [ -d "${TF_WORKDIR}" ]; then
             ls -la "${TF_WORKDIR}"
+            echo "== .tf files under eks/terraform =="
+            find "${TF_WORKDIR}" -maxdepth 2 -name "*.tf" || echo "No .tf files!"
           else
             echo "Directory '${TF_WORKDIR}' does NOT exist!"
           fi
-
-          echo "== All .tf files under workspace =="
-          find . -maxdepth 4 -name "*.tf" || echo "No .tf files found!"
         '''
       }
     }
@@ -82,88 +82,99 @@ pipeline {
 
     stage('Terraform Init') {
       steps {
-        sh '''
-          set -e
-          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+        withCredentials([
+          usernamePassword(
+            credentialsId: "${AWS_CREDS_ID}",
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
+          sh '''
+            set -e
+            export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+            export AWS_REGION="${AWS_REGION}"
 
-          if [ ! -d "${TF_WORKDIR}" ]; then
-            echo "ERROR: Terraform working directory '${TF_WORKDIR}' does not exist."
-            exit 1
-          fi
+            echo "Using Terraform working directory: ${TF_WORKDIR}"
+            cd "${TF_WORKDIR}"
 
-          echo "Using Terraform working directory: ${TF_WORKDIR}"
-          cd "${TF_WORKDIR}"
-
-          echo "Terraform files here:"
-          ls -la
-          echo "Detected .tf files:"
-          find . -maxdepth 1 -name "*.tf" || echo "No .tf files here!"
-
-          terraform version
-          terraform init -input=false
-        '''
+            terraform version
+            terraform init -input=false -upgrade
+          '''
+        }
       }
     }
 
     stage('Terraform Plan') {
       steps {
-        sh '''
-          set -e
-          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+        withCredentials([
+          usernamePassword(
+            credentialsId: "${AWS_CREDS_ID}",
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
+          sh '''
+            set -e
+            export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+            export AWS_REGION="${AWS_REGION}"
 
-          if [ ! -d "${TF_WORKDIR}" ]; then
-            echo "ERROR: Terraform working directory '${TF_WORKDIR}' does not exist."
-            exit 1
-          fi
+            cd "${TF_WORKDIR}"
 
-          cd "${TF_WORKDIR}"
-
-          terraform plan -input=false \
-            -var "cluster_name=${EKS_CLUSTER_NAME}" \
-            -var "region=${AWS_REGION}"
-        '''
+            terraform plan -input=false \
+              -var "cluster_name=${EKS_CLUSTER_NAME}" \
+              -var "region=${AWS_REGION}"
+          '''
+        }
       }
     }
 
     stage('Terraform Apply') {
       steps {
-        sh '''
-          set -e
-          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+        withCredentials([
+          usernamePassword(
+            credentialsId: "${AWS_CREDS_ID}",
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
+          sh '''
+            set -e
+            export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+            export AWS_REGION="${AWS_REGION}"
 
-          if [ ! -d "${TF_WORKDIR}" ]; then
-            echo "ERROR: Terraform working directory '${TF_WORKDIR}' does not exist."
-            exit 1
-          fi
+            cd "${TF_WORKDIR}"
 
-          cd "${TF_WORKDIR}"
-
-          terraform apply -input=false -auto-approve \
-            -var "cluster_name=${EKS_CLUSTER_NAME}" \
-            -var "region=${AWS_REGION}"
-        '''
+            terraform apply -input=false -auto-approve \
+              -var "cluster_name=${EKS_CLUSTER_NAME}" \
+              -var "region=${AWS_REGION}"
+          '''
+        }
       }
     }
 
     stage('Show EKS ALB URL') {
       steps {
-        sh '''
-          set -e
-          export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+        withCredentials([
+          usernamePassword(
+            credentialsId: "${AWS_CREDS_ID}",
+            usernameVariable: 'AWS_ACCESS_KEY_ID',
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+          )
+        ]) {
+          sh '''
+            set -e
+            export PATH="${WORKSPACE}/${TF_LOCAL_BIN}:$PATH"
+            export AWS_REGION="${AWS_REGION}"
 
-          if [ ! -d "${TF_WORKDIR}" ]; then
-            echo "ERROR: Terraform working directory '${TF_WORKDIR}' does not exist."
-            exit 1
-          fi
+            cd "${TF_WORKDIR}"
 
-          cd "${TF_WORKDIR}"
-
-          echo "==============================="
-          echo "       EKS ALB URL"
-          echo "==============================="
-          terraform output -raw alb_url 2>/dev/null || terraform output alb_url
-          echo "==============================="
-        '''
+            echo "==============================="
+            echo "       EKS ALB URL"
+            echo "==============================="
+            terraform output -raw alb_url 2>/dev/null || terraform output alb_url
+            echo "==============================="
+          '''
+        }
       }
     }
   }
