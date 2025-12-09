@@ -4,7 +4,8 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.70"
+      # Let the modules drive us to a 6.x version that satisfies >= 6.23.0
+      version = ">= 6.23.0, < 7.0.0"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
